@@ -1,0 +1,60 @@
+name: Test task-definition-arn, task-definition-family, and task-definition-revision inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Create mock AWS CLI to simulate task definition fetch
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          cat > "$HOME/.local/bin/aws" << 'AWSEOF'
+#!/bin/bash
+if [[ "$*" == *"describe-task-definition"* ]]; then
+  printf '%s\n' '{"taskDefinition":{"family":"my-task-family","revision":5,"taskDefinitionArn":"arn:aws:ecs:us-east-1:123456789012:task-definition/my-task-family:5","containerDefinitions":[{"name":"my-container","image":"nginx:latest","essential":true,"environment":[],"secrets":[]}],"requiresCompatibilities":["FARGATE"],"networkMode":"awsvpc","cpu":"256","memory":"512"}}'
+else
+  echo "Mock AWS CLI: unhandled command: $*" >&2
+  exit 1
+fi
+AWSEOF
+          chmod +x "$HOME/.local/bin/aws"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - id: render
+        uses: .
+        with:
+          task-definition-arn: arn:aws:ecs:us-east-1:123456789012:task-definition/my-task-family:5
+          task-definition-family: my-task-family
+          task-definition-revision: "5"
+          container-name: my-container
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v4
+        env:
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_ACCESS_KEY_ID: fake-key-id
+          AWS_SECRET_ACCESS_KEY: fake-secret-key
+      - name: Assert task-definition output is set
+        env:
+          ACTUAL: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS: task-definition output is set to $ACTUAL"
+      - name: Assert rendered file exists and has correct image
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Checking file: $TASK_DEF_PATH"
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file does not exist at $TASK_DEF_PATH"
+            exit 1
+          fi
+          IMAGE=$(cat "$TASK_DEF_PATH" | python3 -c "import json,sys; td=json.load(sys.stdin); print(td['containerDefinitions'][0]['image'])")
+          echo "image: $IMAGE"
+          if [ "$IMAGE" != "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v4" ]; then
+            echo "FAIL: expected image to be updated"
+            exit 1
+          fi
+          echo "PASS"

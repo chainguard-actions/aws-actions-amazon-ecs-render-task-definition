@@ -1,0 +1,68 @@
+name: Test environment-variables, command, and docker-labels inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: render
+        uses: .
+        with:
+          task-definition: actions/hardened/aws-actions--amazon-ecs-render-task-definition/v1.8.4/tests/fixtures/task-definition.json
+          container-name: my-container
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v2
+          environment-variables: |
+            APP_ENV=production
+            LOG_LEVEL=info
+            PORT=8080
+          command: /bin/sh,-c,echo hello
+          docker-labels: |
+            version=1.0
+            maintainer=team@example.com
+      - name: Assert task-definition output is set
+        env:
+          ACTUAL: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert environment variables were set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Checking environment variables in rendered file..."
+          ENV_COUNT=$(cat "$TASK_DEF_PATH" | python3 -c "import json,sys; td=json.load(sys.stdin); envs=td['containerDefinitions'][0]['environment']; print(len(envs))")
+          echo "env count: $ENV_COUNT"
+          if [ "$ENV_COUNT" -lt "3" ]; then
+            echo "FAIL: expected at least 3 environment variables, got $ENV_COUNT"
+            exit 1
+          fi
+          echo "PASS: environment variables were set"
+      - name: Assert command was set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Checking command in rendered file..."
+          CMD=$(cat "$TASK_DEF_PATH" | python3 -c "import json,sys; td=json.load(sys.stdin); print(td['containerDefinitions'][0].get('command', []))")
+          echo "command: $CMD"
+          if [ -z "$CMD" ] || [ "$CMD" = "[]" ]; then
+            echo "FAIL: expected command to be set"
+            exit 1
+          fi
+          echo "PASS: command was set"
+      - name: Assert docker labels were set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Checking docker labels in rendered file..."
+          LABELS=$(cat "$TASK_DEF_PATH" | python3 -c "import json,sys; td=json.load(sys.stdin); print(td['containerDefinitions'][0].get('dockerLabels', {}))")
+          echo "labels: $LABELS"
+          if [ -z "$LABELS" ] || [ "$LABELS" = "{}" ]; then
+            echo "FAIL: expected docker labels to be set"
+            exit 1
+          fi
+          echo "PASS: docker labels were set"

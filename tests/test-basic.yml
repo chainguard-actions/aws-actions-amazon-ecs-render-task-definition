@@ -1,0 +1,46 @@
+name: Test basic usage - task-definition file with image
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: render
+        uses: .
+        with:
+          task-definition: actions/hardened/aws-actions--amazon-ecs-render-task-definition/v1.8.4/tests/fixtures/task-definition.json
+          container-name: my-container
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
+      - name: Assert task-definition output is set
+        env:
+          ACTUAL: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS: task-definition output is set to $ACTUAL"
+      - name: Assert rendered file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Checking file: $TASK_DEF_PATH"
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file does not exist at $TASK_DEF_PATH"
+            exit 1
+          fi
+          echo "PASS: file exists"
+      - name: Assert image was updated in rendered file
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Checking image in rendered file..."
+          IMAGE=$(cat "$TASK_DEF_PATH" | python3 -c "import json,sys; td=json.load(sys.stdin); print(td['containerDefinitions'][0]['image'])")
+          echo "actual image: $IMAGE"
+          if [ "$IMAGE" != "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest" ]; then
+            echo "FAIL: expected image to be updated"
+            exit 1
+          fi
+          echo "PASS: image was updated correctly"

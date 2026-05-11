@@ -1,0 +1,47 @@
+name: Test multiple container names (comma-separated)
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: render
+        uses: .
+        with:
+          task-definition: actions/hardened/aws-actions--amazon-ecs-render-task-definition/v1.8.4/tests/fixtures/task-definition.json
+          container-name: my-container,sidecar-container
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:multi
+      - name: Assert task-definition output is set
+        env:
+          ACTUAL: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert rendered file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Checking file: $TASK_DEF_PATH"
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file does not exist at $TASK_DEF_PATH"
+            exit 1
+          fi
+          echo "PASS: file exists"
+      - name: Assert both containers have updated image
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Checking images in rendered file..."
+          EXPECTED="123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:multi"
+          CONTAINER_COUNT=$(cat "$TASK_DEF_PATH" | python3 -c "import json,sys; td=json.load(sys.stdin); imgs=[c['image'] for c in td['containerDefinitions']]; print(len([i for i in imgs if i == '$EXPECTED']))")
+          echo "containers with expected image: $CONTAINER_COUNT"
+          if [ "$CONTAINER_COUNT" -lt "2" ]; then
+            echo "FAIL: expected at least 2 containers with updated image, got $CONTAINER_COUNT"
+            exit 1
+          fi
+          echo "PASS: all containers have updated image"
