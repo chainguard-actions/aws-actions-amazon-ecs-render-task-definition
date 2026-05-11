@@ -8,6 +8,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 
 | Version | Tag | Upstream commit |
 |---------|-----|-----------------|
+| v1.8.3 | [`v1.8.3`](https://github.com/chainguard-actions/amazon-ecs-render-task-definition/tree/v1.8.3) | — |
 | v1.8.4 | [`v1.8.4`](https://github.com/chainguard-actions/amazon-ecs-render-task-definition/tree/v1.8.4) | — |
 
 ## Privacy
