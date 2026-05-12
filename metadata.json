@@ -1,7 +1,7 @@
 {
   "owner": "aws-actions",
   "name": "amazon-ecs-render-task-definition",
-  "visibility": "internal",
+  "visibility": "public",
   "description": "Inserts a container image URI into a container definition in an Amazon ECS task definition JSON file, creating a new file.",
   "block_publish": false
 }
