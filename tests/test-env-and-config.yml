@@ -6,7 +6,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - id: action
+      - id: render
         uses: .
         with:
           task-definition: actions/hardened/aws-actions--amazon-ecs-render-task-definition/v1.8.5/tests/fixtures/task-definition.json
@@ -15,10 +15,10 @@ jobs:
           environment-variables: |
             APP_ENV=production
             LOG_LEVEL=info
-          command: /bin/sh -c "echo hello"
+          command: /bin/start.sh
           docker-labels: |
             version=1.0
-            maintainer=team
+            team=backend
           log-configuration-log-driver: awslogs
           log-configuration-options: |
             awslogs-group=/ecs/my-app
@@ -26,7 +26,7 @@ jobs:
             awslogs-stream-prefix=ecs
       - name: Assert output file exists
         env:
-          TASK_DEF_PATH: ${{ steps.action.outputs.task-definition }}
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
           echo "task-definition output: $TASK_DEF_PATH"
           if [ -z "$TASK_DEF_PATH" ]; then
@@ -34,29 +34,63 @@ jobs:
             exit 1
           fi
           if [ ! -f "$TASK_DEF_PATH" ]; then
-            echo "FAIL: output file does not exist at $TASK_DEF_PATH"
+            echo "FAIL: rendered task definition file does not exist at $TASK_DEF_PATH"
             exit 1
           fi
           echo "PASS: output file exists"
       - name: Assert environment variables were set
         env:
-          TASK_DEF_PATH: ${{ steps.action.outputs.task-definition }}
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
-          ENV_VALUE=$(jq -r '.containerDefinitions[] | select(.name=="my-container") | .environment[] | select(.name=="APP_ENV") | .value' "$TASK_DEF_PATH")
-          echo "APP_ENV value: $ENV_VALUE"
-          if [ "$ENV_VALUE" != "production" ]; then
-            echo "FAIL: expected APP_ENV=production"
+          APP_ENV=$(jq -r '.containerDefinitions[] | select(.name=="my-container") | .environment[] | select(.name=="APP_ENV") | .value' "$TASK_DEF_PATH")
+          echo "actual APP_ENV: $APP_ENV"
+          if [ "$APP_ENV" != "production" ]; then
+            echo "FAIL: expected APP_ENV=production, got '$APP_ENV'"
             exit 1
           fi
-          echo "PASS"
-      - name: Assert log driver was set
+          LOG_LEVEL=$(jq -r '.containerDefinitions[] | select(.name=="my-container") | .environment[] | select(.name=="LOG_LEVEL") | .value' "$TASK_DEF_PATH")
+          echo "actual LOG_LEVEL: $LOG_LEVEL"
+          if [ "$LOG_LEVEL" != "info" ]; then
+            echo "FAIL: expected LOG_LEVEL=info, got '$LOG_LEVEL'"
+            exit 1
+          fi
+          echo "PASS: environment variables correctly set"
+      - name: Assert command was set
         env:
-          TASK_DEF_PATH: ${{ steps.action.outputs.task-definition }}
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          CMD=$(jq -r '.containerDefinitions[] | select(.name=="my-container") | .command[0]' "$TASK_DEF_PATH")
+          echo "actual command: $CMD"
+          if [ "$CMD" != "/bin/start.sh" ]; then
+            echo "FAIL: expected command '/bin/start.sh', got '$CMD'"
+            exit 1
+          fi
+          echo "PASS: command correctly set"
+      - name: Assert docker labels were set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          VERSION=$(jq -r '.containerDefinitions[] | select(.name=="my-container") | .dockerLabels.version' "$TASK_DEF_PATH")
+          echo "actual version label: $VERSION"
+          if [ "$VERSION" != "1.0" ]; then
+            echo "FAIL: expected docker label version=1.0, got '$VERSION'"
+            exit 1
+          fi
+          echo "PASS: docker labels correctly set"
+      - name: Assert log configuration was set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
           LOG_DRIVER=$(jq -r '.containerDefinitions[] | select(.name=="my-container") | .logConfiguration.logDriver' "$TASK_DEF_PATH")
-          echo "logDriver: $LOG_DRIVER"
+          echo "actual logDriver: $LOG_DRIVER"
           if [ "$LOG_DRIVER" != "awslogs" ]; then
-            echo "FAIL: expected logDriver=awslogs"
+            echo "FAIL: expected logDriver=awslogs, got '$LOG_DRIVER'"
             exit 1
           fi
-          echo "PASS"
+          LOG_GROUP=$(jq -r '.containerDefinitions[] | select(.name=="my-container") | .logConfiguration.options["awslogs-group"]' "$TASK_DEF_PATH")
+          echo "actual awslogs-group: $LOG_GROUP"
+          if [ "$LOG_GROUP" != "/ecs/my-app" ]; then
+            echo "FAIL: expected awslogs-group=/ecs/my-app, got '$LOG_GROUP'"
+            exit 1
+          fi
+          echo "PASS: log configuration correctly set"

@@ -2,12 +2,13 @@
   "family": "my-multi-task-family",
   "containerDefinitions": [
     {
-      "name": "web-container",
+      "name": "web",
       "image": "nginx:latest",
       "essential": true,
       "portMappings": [
         {
           "containerPort": 80,
+          "hostPort": 80,
           "protocol": "tcp"
         }
       ],
@@ -15,7 +16,7 @@
       "secrets": []
     },
     {
-      "name": "sidecar-container",
+      "name": "sidecar",
       "image": "busybox:latest",
       "essential": false,
       "environment": [],

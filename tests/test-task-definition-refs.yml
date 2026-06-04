@@ -1,4 +1,4 @@
-name: Test basic task definition rendering
+name: Test task definition reference inputs
 on:
   workflow_dispatch:
 jobs:
@@ -10,8 +10,11 @@ jobs:
         uses: .
         with:
           task-definition: actions/hardened/aws-actions--amazon-ecs-render-task-definition/v1.8.5/tests/fixtures/task-definition.json
+          task-definition-arn: arn:aws:ecs:us-east-1:123456789012:task-definition/my-task-family:5
+          task-definition-family: my-task-family
+          task-definition-revision: "5"
           container-name: my-container
-          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v4
       - name: Assert output file exists
         env:
           TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
@@ -32,7 +35,7 @@ jobs:
         run: |
           IMAGE=$(jq -r '.containerDefinitions[] | select(.name=="my-container") | .image' "$TASK_DEF_PATH")
           echo "actual image: $IMAGE"
-          EXPECTED="123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest"
+          EXPECTED="123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v4"
           if [ "$IMAGE" != "$EXPECTED" ]; then
             echo "FAIL: expected image '$EXPECTED', got '$IMAGE'"
             exit 1
