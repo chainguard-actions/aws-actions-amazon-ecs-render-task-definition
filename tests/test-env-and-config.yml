@@ -1,0 +1,62 @@
+name: Test environment variables and log configuration
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          task-definition: actions/hardened/aws-actions--amazon-ecs-render-task-definition/v1.8.5/tests/fixtures/task-definition.json
+          container-name: my-container
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v2
+          environment-variables: |
+            APP_ENV=production
+            LOG_LEVEL=info
+          command: /bin/sh -c "echo hello"
+          docker-labels: |
+            version=1.0
+            maintainer=team
+          log-configuration-log-driver: awslogs
+          log-configuration-options: |
+            awslogs-group=/ecs/my-app
+            awslogs-region=us-east-1
+            awslogs-stream-prefix=ecs
+      - name: Assert output file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.action.outputs.task-definition }}
+        run: |
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ -z "$TASK_DEF_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: output file does not exist at $TASK_DEF_PATH"
+            exit 1
+          fi
+          echo "PASS: output file exists"
+      - name: Assert environment variables were set
+        env:
+          TASK_DEF_PATH: ${{ steps.action.outputs.task-definition }}
+        run: |
+          ENV_VALUE=$(jq -r '.containerDefinitions[] | select(.name=="my-container") | .environment[] | select(.name=="APP_ENV") | .value' "$TASK_DEF_PATH")
+          echo "APP_ENV value: $ENV_VALUE"
+          if [ "$ENV_VALUE" != "production" ]; then
+            echo "FAIL: expected APP_ENV=production"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert log driver was set
+        env:
+          TASK_DEF_PATH: ${{ steps.action.outputs.task-definition }}
+        run: |
+          LOG_DRIVER=$(jq -r '.containerDefinitions[] | select(.name=="my-container") | .logConfiguration.logDriver' "$TASK_DEF_PATH")
+          echo "logDriver: $LOG_DRIVER"
+          if [ "$LOG_DRIVER" != "awslogs" ]; then
+            echo "FAIL: expected logDriver=awslogs"
+            exit 1
+          fi
+          echo "PASS"

@@ -1,0 +1,40 @@
+name: Test task-definition-arn input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          task-definition: actions/hardened/aws-actions--amazon-ecs-render-task-definition/v1.8.5/tests/fixtures/task-definition.json
+          task-definition-arn: arn:aws:ecs:us-east-1:123456789012:task-definition/my-task-family:1
+          container-name: my-container
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v5
+      - name: Assert output file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.action.outputs.task-definition }}
+        run: |
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ -z "$TASK_DEF_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: output file does not exist at $TASK_DEF_PATH"
+            exit 1
+          fi
+          echo "PASS: output file exists"
+      - name: Assert image was updated
+        env:
+          TASK_DEF_PATH: ${{ steps.action.outputs.task-definition }}
+        run: |
+          IMAGE=$(jq -r '.containerDefinitions[] | select(.name=="my-container") | .image' "$TASK_DEF_PATH")
+          echo "image: $IMAGE"
+          if [ "$IMAGE" != "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v5" ]; then
+            echo "FAIL: expected image to be updated"
+            exit 1
+          fi
+          echo "PASS"

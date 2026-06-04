@@ -1,0 +1,40 @@
+{
+  "name": "aws-actions-amazon-ecs-render-task-definition",
+  "version": "1.8.5",
+  "description": "Render Amazon ECS task definition file",
+  "main": "index.js",
+  "scripts": {
+    "lint": "eslint **.js",
+    "package": "ncc build index.js -o dist",
+    "test": "eslint **.js && jest --coverage"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aws-actions/amazon-ecs-render-task-definition.git"
+  },
+  "keywords": [
+    "AWS",
+    "GitHub",
+    "Actions",
+    "JavaScript"
+  ],
+  "author": "AWS",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/aws-actions/amazon-ecs-render-task-definition/issues"
+  },
+  "homepage": "https://github.com/aws-actions/amazon-ecs-render-task-definition#readme",
+  "dependencies": {
+    "@actions/core": "^2.0.2",
+    "@aws-sdk/client-ecs": "^3.923.0",
+    "tmp": "^0.2.5"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "^0.38.4",
+    "eslint": "^9.38.0",
+    "jest": "^29.7.0"
+  },
+  "overrides": {
+    "@smithy/smithy-client": "3.3.6"
+  }
+}
