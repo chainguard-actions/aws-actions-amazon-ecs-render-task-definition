@@ -6,15 +6,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - id: render
+      - id: action
         uses: .
         with:
-          task-definition: actions/hardened/aws-actions--amazon-ecs-render-task-definition/v1.8.5/tests/fixtures/task-definition.json
+          task-definition: ${{ github.workspace }}/actions/hardened/aws-actions--amazon-ecs-render-task-definition/v1.8.5/tests/fixtures/task-definition.json
           container-name: my-container
-          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
+          image: nginx:1.25.0
       - name: Assert output file exists
         env:
-          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+          TASK_DEF_PATH: ${{ steps.action.outputs.task-definition }}
         run: |
           echo "task-definition output: $TASK_DEF_PATH"
           if [ -z "$TASK_DEF_PATH" ]; then
@@ -22,19 +22,18 @@ jobs:
             exit 1
           fi
           if [ ! -f "$TASK_DEF_PATH" ]; then
-            echo "FAIL: rendered task definition file does not exist at $TASK_DEF_PATH"
+            echo "FAIL: output file does not exist at $TASK_DEF_PATH"
             exit 1
           fi
           echo "PASS: output file exists"
       - name: Assert image was updated
         env:
-          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+          TASK_DEF_PATH: ${{ steps.action.outputs.task-definition }}
         run: |
-          IMAGE=$(jq -r '.containerDefinitions[] | select(.name=="my-container") | .image' "$TASK_DEF_PATH")
+          IMAGE=$(jq -r '.containerDefinitions[0].image' "$TASK_DEF_PATH")
           echo "actual image: $IMAGE"
-          EXPECTED="123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest"
-          if [ "$IMAGE" != "$EXPECTED" ]; then
-            echo "FAIL: expected image '$EXPECTED', got '$IMAGE'"
+          if [ "$IMAGE" != "nginx:1.25.0" ]; then
+            echo "FAIL: expected image 'nginx:1.25.0', got '$IMAGE'"
             exit 1
           fi
-          echo "PASS: image correctly updated"
+          echo "PASS"

@@ -1,0 +1,74 @@
+name: Test environment variables, docker labels, and command
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          task-definition: ${{ github.workspace }}/actions/hardened/aws-actions--amazon-ecs-render-task-definition/v1.8.5/tests/fixtures/task-definition.json
+          container-name: my-container
+          image: nginx:1.25.0
+          environment-variables: |
+            MY_VAR=hello
+            ANOTHER_VAR=world
+          docker-labels: |
+            app=myapp
+            version=1.0
+          command: nginx -g 'daemon off;'
+      - name: Assert output file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.action.outputs.task-definition }}
+        run: |
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ -z "$TASK_DEF_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: output file does not exist at $TASK_DEF_PATH"
+            exit 1
+          fi
+          echo "PASS: output file exists"
+      - name: Assert environment variables were set
+        env:
+          TASK_DEF_PATH: ${{ steps.action.outputs.task-definition }}
+        run: |
+          MY_VAR=$(jq -r '.containerDefinitions[0].environment[] | select(.name=="MY_VAR") | .value' "$TASK_DEF_PATH")
+          echo "MY_VAR: $MY_VAR"
+          if [ "$MY_VAR" != "hello" ]; then
+            echo "FAIL: expected MY_VAR='hello', got '$MY_VAR'"
+            exit 1
+          fi
+          ANOTHER_VAR=$(jq -r '.containerDefinitions[0].environment[] | select(.name=="ANOTHER_VAR") | .value' "$TASK_DEF_PATH")
+          echo "ANOTHER_VAR: $ANOTHER_VAR"
+          if [ "$ANOTHER_VAR" != "world" ]; then
+            echo "FAIL: expected ANOTHER_VAR='world', got '$ANOTHER_VAR'"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert docker labels were set
+        env:
+          TASK_DEF_PATH: ${{ steps.action.outputs.task-definition }}
+        run: |
+          APP_LABEL=$(jq -r '.containerDefinitions[0].dockerLabels.app' "$TASK_DEF_PATH")
+          echo "app label: $APP_LABEL"
+          if [ "$APP_LABEL" != "myapp" ]; then
+            echo "FAIL: expected docker label app='myapp', got '$APP_LABEL'"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert command was set
+        env:
+          TASK_DEF_PATH: ${{ steps.action.outputs.task-definition }}
+        run: |
+          CMD=$(jq -r '.containerDefinitions[0].command | join(" ")' "$TASK_DEF_PATH")
+          echo "command: $CMD"
+          if [ -z "$CMD" ]; then
+            echo "FAIL: expected command to be set"
+            exit 1
+          fi
+          echo "PASS"
