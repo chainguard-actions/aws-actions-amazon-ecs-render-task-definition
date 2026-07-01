@@ -1,0 +1,74 @@
+name: Test env-files injection
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create task definition file
+        run: |
+          cat > /tmp/task-def-envfiles.json << 'EOF'
+          {
+            "family": "my-task",
+            "containerDefinitions": [
+              {
+                "name": "app",
+                "image": "old-image:latest",
+                "cpu": 256,
+                "memory": 512,
+                "essential": true
+              }
+            ]
+          }
+          EOF
+
+      - id: render
+        uses: .
+        with:
+          task-definition: /tmp/task-def-envfiles.json
+          container-name: app
+          image: myapp:5.0.0
+          env-files: |
+            arn:aws:s3:::my-bucket/my-env-file.env
+            arn:aws:s3:::my-bucket/my-other-env-file.env
+
+      - name: Assert output file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ -z "$TASK_DEF_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file not found at $TASK_DEF_PATH"
+            exit 1
+          fi
+          echo "PASS: output file exists"
+
+      - name: Assert env files were set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          ENV_FILE_COUNT=$(jq '.containerDefinitions[0].environmentFiles | length' "$TASK_DEF_PATH")
+          echo "actual environmentFiles count: $ENV_FILE_COUNT"
+          if [ "$ENV_FILE_COUNT" != "2" ]; then
+            echo "FAIL: expected 2 environmentFiles, got '$ENV_FILE_COUNT'"
+            exit 1
+          fi
+          FIRST_VALUE=$(jq -r '.containerDefinitions[0].environmentFiles[0].value' "$TASK_DEF_PATH")
+          echo "actual first env file value: $FIRST_VALUE"
+          if [ "$FIRST_VALUE" != "arn:aws:s3:::my-bucket/my-env-file.env" ]; then
+            echo "FAIL: expected first env file ARN, got '$FIRST_VALUE'"
+            exit 1
+          fi
+          FIRST_TYPE=$(jq -r '.containerDefinitions[0].environmentFiles[0].type' "$TASK_DEF_PATH")
+          echo "actual first env file type: $FIRST_TYPE"
+          if [ "$FIRST_TYPE" != "s3" ]; then
+            echo "FAIL: expected type 's3', got '$FIRST_TYPE'"
+            exit 1
+          fi
+          echo "PASS: env files correctly set"

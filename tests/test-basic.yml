@@ -1,0 +1,71 @@
+name: Test basic task definition rendering
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create task definition file
+        run: |
+          cat > /tmp/task-def.json << 'EOF'
+          {
+            "family": "my-task",
+            "containerDefinitions": [
+              {
+                "name": "my-container",
+                "image": "old-image:latest",
+                "cpu": 256,
+                "memory": 512,
+                "essential": true
+              }
+            ]
+          }
+          EOF
+
+      - id: render
+        uses: .
+        with:
+          task-definition: /tmp/task-def.json
+          container-name: my-container
+          image: nginx:1.25.0
+
+      - name: Assert output file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ -z "$TASK_DEF_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file not found at $TASK_DEF_PATH"
+            exit 1
+          fi
+          echo "PASS: output file exists"
+
+      - name: Assert image was updated
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          IMAGE=$(jq -r '.containerDefinitions[0].image' "$TASK_DEF_PATH")
+          echo "actual image: $IMAGE"
+          if [ "$IMAGE" != "nginx:1.25.0" ]; then
+            echo "FAIL: expected image 'nginx:1.25.0', got '$IMAGE'"
+            exit 1
+          fi
+          echo "PASS: image correctly updated"
+
+      - name: Assert container name preserved
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          NAME=$(jq -r '.containerDefinitions[0].name' "$TASK_DEF_PATH")
+          echo "actual name: $NAME"
+          if [ "$NAME" != "my-container" ]; then
+            echo "FAIL: expected container name 'my-container', got '$NAME'"
+            exit 1
+          fi
+          echo "PASS: container name preserved"

@@ -1,0 +1,62 @@
+name: Test task-definition-arn, task-definition-family, and task-definition-revision inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create task definition file
+        run: |
+          cat > /tmp/task-def-arn.json << 'EOF'
+          {
+            "family": "my-task",
+            "containerDefinitions": [
+              {
+                "name": "app",
+                "image": "old-image:latest",
+                "cpu": 256,
+                "memory": 512,
+                "essential": true
+              }
+            ]
+          }
+          EOF
+
+      - id: render
+        uses: .
+        with:
+          task-definition: /tmp/task-def-arn.json
+          task-definition-arn: arn:aws:ecs:us-east-1:123456789012:task-definition/my-task:5
+          task-definition-family: my-task
+          task-definition-revision: "5"
+          container-name: app
+          image: myapp:6.0.0
+
+      - name: Assert output file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ -z "$TASK_DEF_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file not found at $TASK_DEF_PATH"
+            exit 1
+          fi
+          echo "PASS: output file exists"
+
+      - name: Assert image was updated
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          IMAGE=$(jq -r '.containerDefinitions[0].image' "$TASK_DEF_PATH")
+          echo "actual image: $IMAGE"
+          if [ "$IMAGE" != "myapp:6.0.0" ]; then
+            echo "FAIL: expected image 'myapp:6.0.0', got '$IMAGE'"
+            exit 1
+          fi
+          echo "PASS: image correctly updated"
