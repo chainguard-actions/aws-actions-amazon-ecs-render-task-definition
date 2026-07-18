@@ -1,4 +1,4 @@
-name: Test multiple containers - update specific container
+name: Test multiple containers update
 on:
   workflow_dispatch:
 jobs:
@@ -7,84 +7,58 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Create task definition with multiple containers
-        run: |
-          cat > /tmp/task-def-multi.json << 'EOF'
-          {
-            "family": "multi-container-task",
-            "containerDefinitions": [
-              {
-                "name": "app",
-                "image": "app:old",
-                "cpu": 256,
-                "memory": 512,
-                "essential": true
-              },
-              {
-                "name": "sidecar",
-                "image": "sidecar:old",
-                "cpu": 128,
-                "memory": 256,
-                "essential": false
-              }
-            ]
-          }
-          EOF
-
       - id: render
         uses: .
         with:
-          task-definition: /tmp/task-def-multi.json
-          container-name: app
-          image: app:new-version
+          task-definition: tests/fixtures/task-definition-multi.json
+          container-name: web,sidecar
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v2.0.0
 
-      - name: Assert output file exists
+      - name: Assert task-definition output is set
         env:
           TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
-          echo "task-definition output: $TASK_DEF_PATH"
+          echo "task-definition path: $TASK_DEF_PATH"
           if [ -z "$TASK_DEF_PATH" ]; then
             echo "FAIL: task-definition output is empty"
             exit 1
           fi
-          if [ ! -f "$TASK_DEF_PATH" ]; then
-            echo "FAIL: rendered task definition file not found at $TASK_DEF_PATH"
-            exit 1
-          fi
-          echo "PASS: output file exists"
+          echo "PASS"
 
-      - name: Assert target container image was updated
+      - name: Assert web container image was updated
         env:
           TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
-          APP_IMAGE=$(jq -r '.containerDefinitions[] | select(.name=="app") | .image' "$TASK_DEF_PATH")
-          echo "actual app image: $APP_IMAGE"
-          if [ "$APP_IMAGE" != "app:new-version" ]; then
-            echo "FAIL: expected app image 'app:new-version', got '$APP_IMAGE'"
+          echo "Contents of rendered task definition:"
+          cat "$TASK_DEF_PATH"
+          WEB_IMAGE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .image' "$TASK_DEF_PATH")
+          echo "web image: $WEB_IMAGE"
+          if [ "$WEB_IMAGE" != "123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v2.0.0" ]; then
+            echo "FAIL: expected web image to be updated, got: $WEB_IMAGE"
             exit 1
           fi
-          echo "PASS: target container image updated"
+          echo "PASS: web container image was updated"
 
-      - name: Assert other container image was not changed
+      - name: Assert sidecar container image was updated
         env:
           TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
           SIDECAR_IMAGE=$(jq -r '.containerDefinitions[] | select(.name=="sidecar") | .image' "$TASK_DEF_PATH")
-          echo "actual sidecar image: $SIDECAR_IMAGE"
-          if [ "$SIDECAR_IMAGE" != "sidecar:old" ]; then
-            echo "FAIL: expected sidecar image 'sidecar:old' (unchanged), got '$SIDECAR_IMAGE'"
+          echo "sidecar image: $SIDECAR_IMAGE"
+          if [ "$SIDECAR_IMAGE" != "123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v2.0.0" ]; then
+            echo "FAIL: expected sidecar image to be updated, got: $SIDECAR_IMAGE"
             exit 1
           fi
-          echo "PASS: other container image unchanged"
+          echo "PASS: sidecar container image was updated"
 
-      - name: Assert both containers still present
+      - name: Assert both containers are still present
         env:
           TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
           COUNT=$(jq '.containerDefinitions | length' "$TASK_DEF_PATH")
           echo "container count: $COUNT"
           if [ "$COUNT" != "2" ]; then
-            echo "FAIL: expected 2 containers, got $COUNT"
+            echo "FAIL: expected 2 containers, got: $COUNT"
             exit 1
           fi
-          echo "PASS: both containers present"
+          echo "PASS: both containers are present"

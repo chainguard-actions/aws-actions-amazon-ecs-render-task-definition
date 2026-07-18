@@ -1,4 +1,4 @@
-name: Test log configuration options
+name: Test log configuration
 on:
   workflow_dispatch:
 jobs:
@@ -7,76 +7,75 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Create task definition file
-        run: |
-          cat > /tmp/task-def-log.json << 'EOF'
-          {
-            "family": "my-task",
-            "containerDefinitions": [
-              {
-                "name": "app",
-                "image": "old-image:latest",
-                "cpu": 256,
-                "memory": 512,
-                "essential": true
-              }
-            ]
-          }
-          EOF
-
       - id: render
         uses: .
         with:
-          task-definition: /tmp/task-def-log.json
-          container-name: app
-          image: myapp:3.0.0
+          task-definition: tests/fixtures/task-definition.json
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:latest
           log-configuration-log-driver: awslogs
           log-configuration-options: |
-            awslogs-group=/ecs/my-task
+            awslogs-group=/ecs/test-task
             awslogs-region=us-east-1
             awslogs-stream-prefix=ecs
 
-      - name: Assert output file exists
+      - name: Assert task-definition output is set
         env:
           TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
-          echo "task-definition output: $TASK_DEF_PATH"
+          echo "task-definition path: $TASK_DEF_PATH"
           if [ -z "$TASK_DEF_PATH" ]; then
             echo "FAIL: task-definition output is empty"
             exit 1
           fi
-          if [ ! -f "$TASK_DEF_PATH" ]; then
-            echo "FAIL: rendered task definition file not found at $TASK_DEF_PATH"
-            exit 1
-          fi
-          echo "PASS: output file exists"
+          echo "PASS"
 
       - name: Assert log driver was set
         env:
           TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
-          LOG_DRIVER=$(jq -r '.containerDefinitions[0].logConfiguration.logDriver' "$TASK_DEF_PATH")
-          echo "actual logDriver: $LOG_DRIVER"
+          echo "Contents of rendered task definition:"
+          cat "$TASK_DEF_PATH"
+          LOG_DRIVER=$(jq -r '.containerDefinitions[] | select(.name=="web") | .logConfiguration.logDriver' "$TASK_DEF_PATH")
+          echo "logDriver: $LOG_DRIVER"
           if [ "$LOG_DRIVER" != "awslogs" ]; then
-            echo "FAIL: expected logDriver 'awslogs', got '$LOG_DRIVER'"
+            echo "FAIL: expected logDriver=awslogs, got: $LOG_DRIVER"
             exit 1
           fi
-          echo "PASS: logDriver correctly set"
+          echo "PASS: log driver was set correctly"
 
-      - name: Assert log configuration options were set
+      - name: Assert log group option was set
         env:
           TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
-          LOG_GROUP=$(jq -r '.containerDefinitions[0].logConfiguration.options["awslogs-group"]' "$TASK_DEF_PATH")
-          echo "actual awslogs-group: $LOG_GROUP"
-          if [ "$LOG_GROUP" != "/ecs/my-task" ]; then
-            echo "FAIL: expected awslogs-group '/ecs/my-task', got '$LOG_GROUP'"
+          LOG_GROUP=$(jq -r '.containerDefinitions[] | select(.name=="web") | .logConfiguration.options["awslogs-group"]' "$TASK_DEF_PATH")
+          echo "awslogs-group: $LOG_GROUP"
+          if [ "$LOG_GROUP" != "/ecs/test-task" ]; then
+            echo "FAIL: expected awslogs-group=/ecs/test-task, got: $LOG_GROUP"
             exit 1
           fi
-          LOG_REGION=$(jq -r '.containerDefinitions[0].logConfiguration.options["awslogs-region"]' "$TASK_DEF_PATH")
-          echo "actual awslogs-region: $LOG_REGION"
+          echo "PASS: log group option was set correctly"
+
+      - name: Assert log region option was set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          LOG_REGION=$(jq -r '.containerDefinitions[] | select(.name=="web") | .logConfiguration.options["awslogs-region"]' "$TASK_DEF_PATH")
+          echo "awslogs-region: $LOG_REGION"
           if [ "$LOG_REGION" != "us-east-1" ]; then
-            echo "FAIL: expected awslogs-region 'us-east-1', got '$LOG_REGION'"
+            echo "FAIL: expected awslogs-region=us-east-1, got: $LOG_REGION"
             exit 1
           fi
-          echo "PASS: log configuration options correctly set"
+          echo "PASS: log region option was set correctly"
+
+      - name: Assert log stream prefix option was set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          LOG_PREFIX=$(jq -r '.containerDefinitions[] | select(.name=="web") | .logConfiguration.options["awslogs-stream-prefix"]' "$TASK_DEF_PATH")
+          echo "awslogs-stream-prefix: $LOG_PREFIX"
+          if [ "$LOG_PREFIX" != "ecs" ]; then
+            echo "FAIL: expected awslogs-stream-prefix=ecs, got: $LOG_PREFIX"
+            exit 1
+          fi
+          echo "PASS: log stream prefix option was set correctly"

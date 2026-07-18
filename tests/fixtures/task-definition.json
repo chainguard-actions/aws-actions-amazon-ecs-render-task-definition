@@ -1,0 +1,29 @@
+{
+  "family": "test-task",
+  "containerDefinitions": [
+    {
+      "name": "web",
+      "image": "nginx:latest",
+      "cpu": 256,
+      "memory": 512,
+      "essential": true,
+      "environment": [
+        {
+          "name": "EXISTING_VAR",
+          "value": "existing-value"
+        }
+      ],
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "hostPort": 80,
+          "protocol": "tcp"
+        }
+      ]
+    }
+  ],
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "256",
+  "memory": "512"
+}

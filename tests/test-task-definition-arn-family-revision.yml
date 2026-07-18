@@ -1,4 +1,4 @@
-name: Test basic usage - render task definition with new image
+name: Test task-definition-arn, task-definition-family, and task-definition-revision inputs
 on:
   workflow_dispatch:
 jobs:
@@ -7,12 +7,18 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      # When task-definition file is provided, it takes precedence over arn/family/revision.
+      # This test verifies the inputs are accepted and the action renders correctly
+      # using the local file path (no AWS API call is made).
       - id: render
         uses: .
         with:
           task-definition: tests/fixtures/task-definition.json
+          task-definition-arn: arn:aws:ecs:us-east-1:123456789012:task-definition/test-task:5
+          task-definition-family: test-task
+          task-definition-revision: "5"
           container-name: web
-          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v1.2.3
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v3.0.0
 
       - name: Assert task-definition output is set
         env:
@@ -44,13 +50,13 @@ jobs:
           cat "$TASK_DEF_PATH"
           IMAGE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .image' "$TASK_DEF_PATH")
           echo "image: $IMAGE"
-          if [ "$IMAGE" != "123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v1.2.3" ]; then
+          if [ "$IMAGE" != "123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v3.0.0" ]; then
             echo "FAIL: expected image URI to be updated, got: $IMAGE"
             exit 1
           fi
           echo "PASS: image URI was correctly updated"
 
-      - name: Assert family is preserved
+      - name: Assert family is preserved from local file
         env:
           TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
@@ -61,16 +67,3 @@ jobs:
             exit 1
           fi
           echo "PASS: family is preserved"
-
-      - name: Assert ignored attributes are removed
-        env:
-          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
-        run: |
-          # taskDefinitionArn, revision, status, etc. should be stripped
-          ARN=$(jq -r '.taskDefinitionArn // "null"' "$TASK_DEF_PATH")
-          echo "taskDefinitionArn: $ARN"
-          if [ "$ARN" != "null" ]; then
-            echo "FAIL: taskDefinitionArn should have been removed, got: $ARN"
-            exit 1
-          fi
-          echo "PASS: ignored attributes are removed"

@@ -1,0 +1,81 @@
+name: Test docker labels and command override
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition.json
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:latest
+          command: /bin/sh -c echo hello
+          docker-labels: |
+            app=myapp
+            version=1.0.0
+            environment=production
+
+      - name: Assert task-definition output is set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "task-definition path: $TASK_DEF_PATH"
+          if [ -z "$TASK_DEF_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert command was set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Contents of rendered task definition:"
+          cat "$TASK_DEF_PATH"
+          CMD=$(jq -r '.containerDefinitions[] | select(.name=="web") | .command | join(" ")' "$TASK_DEF_PATH")
+          echo "command: $CMD"
+          if [ "$CMD" != "/bin/sh -c echo hello" ]; then
+            echo "FAIL: expected command '/bin/sh -c echo hello', got: $CMD"
+            exit 1
+          fi
+          echo "PASS: command was set correctly"
+
+      - name: Assert docker label app was set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          APP_LABEL=$(jq -r '.containerDefinitions[] | select(.name=="web") | .dockerLabels.app' "$TASK_DEF_PATH")
+          echo "dockerLabels.app: $APP_LABEL"
+          if [ "$APP_LABEL" != "myapp" ]; then
+            echo "FAIL: expected dockerLabels.app=myapp, got: $APP_LABEL"
+            exit 1
+          fi
+          echo "PASS: docker label app was set correctly"
+
+      - name: Assert docker label version was set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          VERSION_LABEL=$(jq -r '.containerDefinitions[] | select(.name=="web") | .dockerLabels.version' "$TASK_DEF_PATH")
+          echo "dockerLabels.version: $VERSION_LABEL"
+          if [ "$VERSION_LABEL" != "1.0.0" ]; then
+            echo "FAIL: expected dockerLabels.version=1.0.0, got: $VERSION_LABEL"
+            exit 1
+          fi
+          echo "PASS: docker label version was set correctly"
+
+      - name: Assert docker label environment was set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          ENV_LABEL=$(jq -r '.containerDefinitions[] | select(.name=="web") | .dockerLabels.environment' "$TASK_DEF_PATH")
+          echo "dockerLabels.environment: $ENV_LABEL"
+          if [ "$ENV_LABEL" != "production" ]; then
+            echo "FAIL: expected dockerLabels.environment=production, got: $ENV_LABEL"
+            exit 1
+          fi
+          echo "PASS: docker label environment was set correctly"
