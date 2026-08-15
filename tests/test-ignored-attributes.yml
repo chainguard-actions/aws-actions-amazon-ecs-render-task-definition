@@ -1,0 +1,111 @@
+name: Test ignored ECS attributes are removed
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      RUNNER_TEMP: /tmp
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition-with-ecs-attrs.json
+          container-name: app
+          image: new-image:v2.0.0
+
+      - name: Assert output file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file does not exist"
+            exit 1
+          fi
+          echo "PASS: rendered task definition file exists"
+
+      - name: Assert taskDefinitionArn is removed
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          VALUE=$(jq -r '.taskDefinitionArn // "null"' "$TASK_DEF_PATH")
+          echo "actual taskDefinitionArn: $VALUE"
+          if [ "$VALUE" != "null" ]; then
+            echo "FAIL: expected taskDefinitionArn to be removed but got '$VALUE'"
+            exit 1
+          fi
+          echo "PASS: taskDefinitionArn correctly removed"
+
+      - name: Assert revision is removed
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          VALUE=$(jq -r '.revision // "null"' "$TASK_DEF_PATH")
+          echo "actual revision: $VALUE"
+          if [ "$VALUE" != "null" ]; then
+            echo "FAIL: expected revision to be removed but got '$VALUE'"
+            exit 1
+          fi
+          echo "PASS: revision correctly removed"
+
+      - name: Assert status is removed
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          VALUE=$(jq -r '.status // "null"' "$TASK_DEF_PATH")
+          echo "actual status: $VALUE"
+          if [ "$VALUE" != "null" ]; then
+            echo "FAIL: expected status to be removed but got '$VALUE'"
+            exit 1
+          fi
+          echo "PASS: status correctly removed"
+
+      - name: Assert compatibilities is removed
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          VALUE=$(jq -r '.compatibilities // "null"' "$TASK_DEF_PATH")
+          echo "actual compatibilities: $VALUE"
+          if [ "$VALUE" != "null" ]; then
+            echo "FAIL: expected compatibilities to be removed but got '$VALUE'"
+            exit 1
+          fi
+          echo "PASS: compatibilities correctly removed"
+
+      - name: Assert requiresAttributes is removed
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          VALUE=$(jq -r '.requiresAttributes // "null"' "$TASK_DEF_PATH")
+          echo "actual requiresAttributes: $VALUE"
+          if [ "$VALUE" != "null" ]; then
+            echo "FAIL: expected requiresAttributes to be removed but got '$VALUE'"
+            exit 1
+          fi
+          echo "PASS: requiresAttributes correctly removed"
+
+      - name: Assert family is preserved
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          FAMILY=$(jq -r '.family' "$TASK_DEF_PATH")
+          echo "actual family: $FAMILY"
+          if [ "$FAMILY" != "test-task-with-attrs" ]; then
+            echo "FAIL: expected family 'test-task-with-attrs' but got '$FAMILY'"
+            exit 1
+          fi
+          echo "PASS: family preserved"
+
+      - name: Assert image was updated
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          IMAGE=$(jq -r '.containerDefinitions[] | select(.name=="app") | .image' "$TASK_DEF_PATH")
+          echo "actual image: $IMAGE"
+          if [ "$IMAGE" != "new-image:v2.0.0" ]; then
+            echo "FAIL: expected image 'new-image:v2.0.0' but got '$IMAGE'"
+            exit 1
+          fi
+          echo "PASS: image correctly updated"

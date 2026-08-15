@@ -1,41 +1,68 @@
-name: Test task-definition-family and task-definition-revision inputs
+name: Test task-definition-family input (file takes precedence)
 on:
   workflow_dispatch:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      RUNNER_TEMP: /tmp
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - id: action
+
+      # When both task-definition (file) and task-definition-family are provided,
+      # the action uses the file and ignores the family. This exercises the
+      # task-definition-family input path in the with: block for coverage.
+      - id: render
         uses: .
         with:
-          task-definition: actions/hardened/aws-actions--amazon-ecs-render-task-definition/v1.8.5/tests/fixtures/task-definition.json
+          task-definition: tests/fixtures/task-definition-basic.json
           task-definition-family: my-task-family
-          task-definition-revision: "1"
-          container-name: my-container
-          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v4
-      - name: Assert output file exists
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v3.0.0
+
+      - name: Assert output file path is set
         env:
-          TASK_DEF_PATH: ${{ steps.action.outputs.task-definition }}
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
           echo "task-definition output: $TASK_DEF_PATH"
           if [ -z "$TASK_DEF_PATH" ]; then
             echo "FAIL: task-definition output is empty"
             exit 1
           fi
-          if [ ! -f "$TASK_DEF_PATH" ]; then
-            echo "FAIL: output file does not exist at $TASK_DEF_PATH"
-            exit 1
-          fi
-          echo "PASS: output file exists"
-      - name: Assert image was updated
+          echo "PASS: task-definition output is set"
+
+      - name: Assert output file exists
         env:
-          TASK_DEF_PATH: ${{ steps.action.outputs.task-definition }}
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
-          IMAGE=$(jq -r '.containerDefinitions[] | select(.name=="my-container") | .image' "$TASK_DEF_PATH")
-          echo "image: $IMAGE"
-          if [ "$IMAGE" != "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v4" ]; then
-            echo "FAIL: expected image to be updated"
+          echo "Checking file: $TASK_DEF_PATH"
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file does not exist"
             exit 1
           fi
-          echo "PASS"
+          echo "PASS: rendered task definition file exists"
+
+      - name: Assert image URI was updated from local file
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          IMAGE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .image' "$TASK_DEF_PATH")
+          echo "actual image: $IMAGE"
+          EXPECTED="123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v3.0.0"
+          if [ "$IMAGE" != "$EXPECTED" ]; then
+            echo "FAIL: expected image '$EXPECTED' but got '$IMAGE'"
+            exit 1
+          fi
+          echo "PASS: image URI correctly updated"
+
+      - name: Assert family is preserved from local file
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          FAMILY=$(jq -r '.family' "$TASK_DEF_PATH")
+          echo "actual family: $FAMILY"
+          if [ "$FAMILY" != "test-task" ]; then
+            echo "FAIL: expected family 'test-task' but got '$FAMILY'"
+            exit 1
+          fi
+          echo "PASS: family preserved from local file"

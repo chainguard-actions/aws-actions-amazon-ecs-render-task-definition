@@ -1,4 +1,4 @@
-name: Test basic image rendering
+name: Test env-files input
 on:
   workflow_dispatch:
 jobs:
@@ -15,6 +15,9 @@ jobs:
           task-definition: tests/fixtures/task-definition-basic.json
           container-name: web
           image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v1.2.3
+          env-files: |
+            arn:aws:s3:::my-bucket/my-env-file.env
+            arn:aws:s3:::my-bucket/my-other-env-file.env
 
       - name: Assert output file path is set
         env:
@@ -38,6 +41,42 @@ jobs:
           fi
           echo "PASS: rendered task definition file exists"
 
+      - name: Assert environmentFiles were set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          COUNT=$(jq '.containerDefinitions[] | select(.name=="web") | .environmentFiles | length' "$TASK_DEF_PATH")
+          echo "actual environmentFiles count: $COUNT"
+          if [ "$COUNT" != "2" ]; then
+            echo "FAIL: expected 2 environmentFiles but got '$COUNT'"
+            exit 1
+          fi
+          echo "PASS: environmentFiles count is correct"
+
+      - name: Assert first env-file value is correct
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          VALUE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .environmentFiles[0].value' "$TASK_DEF_PATH")
+          echo "actual first env-file value: $VALUE"
+          if [ "$VALUE" != "arn:aws:s3:::my-bucket/my-env-file.env" ]; then
+            echo "FAIL: expected 'arn:aws:s3:::my-bucket/my-env-file.env' but got '$VALUE'"
+            exit 1
+          fi
+          echo "PASS: first env-file value is correct"
+
+      - name: Assert env-file type is s3
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          TYPE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .environmentFiles[0].type' "$TASK_DEF_PATH")
+          echo "actual env-file type: $TYPE"
+          if [ "$TYPE" != "s3" ]; then
+            echo "FAIL: expected type 's3' but got '$TYPE'"
+            exit 1
+          fi
+          echo "PASS: env-file type is s3"
+
       - name: Assert image URI was updated
         env:
           TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
@@ -50,15 +89,3 @@ jobs:
             exit 1
           fi
           echo "PASS: image URI correctly updated"
-
-      - name: Assert family is preserved
-        env:
-          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
-        run: |
-          FAMILY=$(jq -r '.family' "$TASK_DEF_PATH")
-          echo "actual family: $FAMILY"
-          if [ "$FAMILY" != "test-task" ]; then
-            echo "FAIL: expected family 'test-task' but got '$FAMILY'"
-            exit 1
-          fi
-          echo "PASS: family preserved"

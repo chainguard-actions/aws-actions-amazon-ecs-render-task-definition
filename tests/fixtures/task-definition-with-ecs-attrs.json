@@ -1,0 +1,27 @@
+{
+  "family": "test-task-with-attrs",
+  "taskDefinitionArn": "arn:aws:ecs:us-east-1:123456789012:task-definition/test-task:1",
+  "revision": 1,
+  "status": "ACTIVE",
+  "compatibilities": ["EC2", "FARGATE"],
+  "requiresAttributes": [
+    {
+      "name": "com.amazonaws.ecs.capability.ecr-auth"
+    }
+  ],
+  "registeredAt": "2023-01-01T00:00:00.000Z",
+  "registeredBy": "arn:aws:iam::123456789012:user/test-user",
+  "containerDefinitions": [
+    {
+      "name": "app",
+      "image": "old-image:latest",
+      "cpu": 256,
+      "memory": 512,
+      "essential": true
+    }
+  ],
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "256",
+  "memory": "512"
+}

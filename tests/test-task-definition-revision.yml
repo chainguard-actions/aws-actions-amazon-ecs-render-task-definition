@@ -1,4 +1,4 @@
-name: Test basic image rendering
+name: Test task-definition-revision input (file takes precedence)
 on:
   workflow_dispatch:
 jobs:
@@ -9,12 +9,18 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      # When both task-definition (file) and task-definition-family/revision are
+      # provided, the action uses the file and ignores the family/revision. This
+      # exercises the task-definition-revision input path in the with: block for
+      # coverage. A family is also provided since revision alone is invalid.
       - id: render
         uses: .
         with:
           task-definition: tests/fixtures/task-definition-basic.json
+          task-definition-family: my-task-family
+          task-definition-revision: "5"
           container-name: web
-          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v1.2.3
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v4.0.0
 
       - name: Assert output file path is set
         env:
@@ -38,20 +44,20 @@ jobs:
           fi
           echo "PASS: rendered task definition file exists"
 
-      - name: Assert image URI was updated
+      - name: Assert image URI was updated from local file
         env:
           TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
           IMAGE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .image' "$TASK_DEF_PATH")
           echo "actual image: $IMAGE"
-          EXPECTED="123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v1.2.3"
+          EXPECTED="123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v4.0.0"
           if [ "$IMAGE" != "$EXPECTED" ]; then
             echo "FAIL: expected image '$EXPECTED' but got '$IMAGE'"
             exit 1
           fi
           echo "PASS: image URI correctly updated"
 
-      - name: Assert family is preserved
+      - name: Assert family is preserved from local file
         env:
           TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
@@ -61,4 +67,4 @@ jobs:
             echo "FAIL: expected family 'test-task' but got '$FAMILY'"
             exit 1
           fi
-          echo "PASS: family preserved"
+          echo "PASS: family preserved from local file"

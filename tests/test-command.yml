@@ -1,0 +1,64 @@
+name: Test command override
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      RUNNER_TEMP: /tmp
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition-basic.json
+          container-name: web
+          image: myapp:latest
+          command: /bin/sh -c echo hello
+
+      - name: Assert output file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file does not exist"
+            exit 1
+          fi
+          echo "PASS: rendered task definition file exists"
+
+      - name: Assert command was set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          CMD=$(jq -r '.containerDefinitions[] | select(.name=="web") | .command | join(" ")' "$TASK_DEF_PATH")
+          echo "actual command: $CMD"
+          if [ "$CMD" != "/bin/sh -c echo hello" ]; then
+            echo "FAIL: expected command '/bin/sh -c echo hello' but got '$CMD'"
+            exit 1
+          fi
+          echo "PASS: command correctly set"
+
+      - name: Assert command is an array
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          CMD_TYPE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .command | type' "$TASK_DEF_PATH")
+          echo "actual command type: $CMD_TYPE"
+          if [ "$CMD_TYPE" != "array" ]; then
+            echo "FAIL: expected command to be an array but got '$CMD_TYPE'"
+            exit 1
+          fi
+          echo "PASS: command is an array"
+
+      - name: Assert command has correct number of elements
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          CMD_LEN=$(jq '.containerDefinitions[] | select(.name=="web") | .command | length' "$TASK_DEF_PATH")
+          echo "actual command length: $CMD_LEN"
+          if [ "$CMD_LEN" != "4" ]; then
+            echo "FAIL: expected command to have 4 elements but got $CMD_LEN"
+            exit 1
+          fi
+          echo "PASS: command has correct number of elements"

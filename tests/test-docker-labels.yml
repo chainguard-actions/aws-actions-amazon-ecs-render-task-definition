@@ -1,0 +1,67 @@
+name: Test docker labels
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      RUNNER_TEMP: /tmp
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition-basic.json
+          container-name: web
+          image: myapp:latest
+          docker-labels: |
+            app=myapp
+            version=1.0.0
+            environment=production
+
+      - name: Assert output file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file does not exist"
+            exit 1
+          fi
+          echo "PASS: rendered task definition file exists"
+
+      - name: Assert app label was set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          VALUE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .dockerLabels.app' "$TASK_DEF_PATH")
+          echo "actual app label: $VALUE"
+          if [ "$VALUE" != "myapp" ]; then
+            echo "FAIL: expected app label 'myapp' but got '$VALUE'"
+            exit 1
+          fi
+          echo "PASS: app label correctly set"
+
+      - name: Assert version label was set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          VALUE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .dockerLabels.version' "$TASK_DEF_PATH")
+          echo "actual version label: $VALUE"
+          if [ "$VALUE" != "1.0.0" ]; then
+            echo "FAIL: expected version label '1.0.0' but got '$VALUE'"
+            exit 1
+          fi
+          echo "PASS: version label correctly set"
+
+      - name: Assert environment label was set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          VALUE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .dockerLabels.environment' "$TASK_DEF_PATH")
+          echo "actual environment label: $VALUE"
+          if [ "$VALUE" != "production" ]; then
+            echo "FAIL: expected environment label 'production' but got '$VALUE'"
+            exit 1
+          fi
+          echo "PASS: environment label correctly set"

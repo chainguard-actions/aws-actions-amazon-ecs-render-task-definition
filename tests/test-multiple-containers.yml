@@ -1,0 +1,63 @@
+name: Test multiple containers update
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      RUNNER_TEMP: /tmp
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition-multi.json
+          container-name: web,sidecar
+          image: myapp:v2.0.0
+
+      - name: Assert output file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file does not exist"
+            exit 1
+          fi
+          echo "PASS: rendered task definition file exists"
+
+      - name: Assert web container image was updated
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          IMAGE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .image' "$TASK_DEF_PATH")
+          echo "actual web image: $IMAGE"
+          if [ "$IMAGE" != "myapp:v2.0.0" ]; then
+            echo "FAIL: expected web image 'myapp:v2.0.0' but got '$IMAGE'"
+            exit 1
+          fi
+          echo "PASS: web container image correctly updated"
+
+      - name: Assert sidecar container image was updated
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          IMAGE=$(jq -r '.containerDefinitions[] | select(.name=="sidecar") | .image' "$TASK_DEF_PATH")
+          echo "actual sidecar image: $IMAGE"
+          if [ "$IMAGE" != "myapp:v2.0.0" ]; then
+            echo "FAIL: expected sidecar image 'myapp:v2.0.0' but got '$IMAGE'"
+            exit 1
+          fi
+          echo "PASS: sidecar container image correctly updated"
+
+      - name: Assert family is preserved
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          FAMILY=$(jq -r '.family' "$TASK_DEF_PATH")
+          echo "actual family: $FAMILY"
+          if [ "$FAMILY" != "test-multi-task" ]; then
+            echo "FAIL: expected family 'test-multi-task' but got '$FAMILY'"
+            exit 1
+          fi
+          echo "PASS: family preserved"

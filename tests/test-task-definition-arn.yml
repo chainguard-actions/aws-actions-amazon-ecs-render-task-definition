@@ -1,26 +1,68 @@
-name: Test task definition ARN, family, and revision inputs
+name: Test task-definition-arn input (file takes precedence)
 on:
   workflow_dispatch:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      RUNNER_TEMP: /tmp
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - id: action
+
+      # When both task-definition (file) and task-definition-arn are provided,
+      # the action uses the file and ignores the ARN. This exercises the
+      # task-definition-arn input path in the with: block for coverage.
+      - id: render
         uses: .
-        continue-on-error: true
         with:
-          task-definition-arn: arn:aws:ecs:us-east-1:123456789012:task-definition/my-task-family:5
-          task-definition-family: my-task-family
-          task-definition-revision: "5"
-          container-name: my-container
-          image: nginx:1.25.0
+          task-definition: tests/fixtures/task-definition-basic.json
+          task-definition-arn: arn:aws:ecs:us-east-1:123456789012:task-definition/test-task:1
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v2.0.0
+
+      - name: Assert output file path is set
         env:
-          AWS_DEFAULT_REGION: us-east-1
-          AWS_ACCESS_KEY_ID: fake-key
-          AWS_SECRET_ACCESS_KEY: fake-secret
-      - name: Verify step ran (inputs were accepted)
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
-          echo "Action step completed (with or without error due to missing AWS credentials)"
-          echo "Inputs task-definition-arn, task-definition-family, task-definition-revision were passed"
-          echo "PASS: inputs were accepted by the action"
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ -z "$TASK_DEF_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS: task-definition output is set"
+
+      - name: Assert output file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Checking file: $TASK_DEF_PATH"
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file does not exist"
+            exit 1
+          fi
+          echo "PASS: rendered task definition file exists"
+
+      - name: Assert image URI was updated from local file
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          IMAGE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .image' "$TASK_DEF_PATH")
+          echo "actual image: $IMAGE"
+          EXPECTED="123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v2.0.0"
+          if [ "$IMAGE" != "$EXPECTED" ]; then
+            echo "FAIL: expected image '$EXPECTED' but got '$IMAGE'"
+            exit 1
+          fi
+          echo "PASS: image URI correctly updated"
+
+      - name: Assert family is preserved from local file
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          FAMILY=$(jq -r '.family' "$TASK_DEF_PATH")
+          echo "actual family: $FAMILY"
+          if [ "$FAMILY" != "test-task" ]; then
+            echo "FAIL: expected family 'test-task' but got '$FAMILY'"
+            exit 1
+          fi
+          echo "PASS: family preserved from local file"
