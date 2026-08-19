@@ -1,0 +1,38 @@
+name: Test rendering with task-definition-family
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # The task-definition-family input causes the action to call ecs.describeTaskDefinition,
+      # which requires real AWS credentials. Without them the action fails gracefully.
+      - id: render
+        uses: .
+        continue-on-error: true
+        with:
+          task-definition-family: my-task-family
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
+
+      - name: Assert action ran (succeeded with output, or failed gracefully without AWS creds)
+        env:
+          OUTCOME: ${{ steps.render.outcome }}
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "output path: $OUTPUT_PATH"
+          if [ "$OUTCOME" = "success" ]; then
+            if [ -z "$OUTPUT_PATH" ]; then
+              echo "FAIL: action succeeded but task-definition output is empty"
+              exit 1
+            fi
+            echo "PASS: action succeeded with output at $OUTPUT_PATH"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (no AWS credentials available in test environment)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

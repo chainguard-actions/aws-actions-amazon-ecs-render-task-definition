@@ -1,0 +1,66 @@
+name: Test rendering with environment variables
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition.json
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
+          environment-variables: |
+            NEW_VAR=new-value
+            ANOTHER_VAR=another-value
+            EXISTING_VAR=updated-value
+
+      - name: Assert task-definition output is set
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "output path: $OUTPUT_PATH"
+          if [ -z "$OUTPUT_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert new environment variable was added
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          NEW_VAL=$(jq -r '.containerDefinitions[] | select(.name=="web") | .environment[] | select(.name=="NEW_VAR") | .value' "$OUTPUT_PATH")
+          echo "NEW_VAR value: $NEW_VAL"
+          if [ "$NEW_VAL" != "new-value" ]; then
+            echo "FAIL: expected NEW_VAR='new-value' but got '$NEW_VAL'"
+            exit 1
+          fi
+          echo "PASS: NEW_VAR correctly added"
+
+      - name: Assert existing environment variable was updated
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          EXISTING_VAL=$(jq -r '.containerDefinitions[] | select(.name=="web") | .environment[] | select(.name=="EXISTING_VAR") | .value' "$OUTPUT_PATH")
+          echo "EXISTING_VAR value: $EXISTING_VAL"
+          if [ "$EXISTING_VAL" != "updated-value" ]; then
+            echo "FAIL: expected EXISTING_VAR='updated-value' but got '$EXISTING_VAL'"
+            exit 1
+          fi
+          echo "PASS: EXISTING_VAR correctly updated"
+
+      - name: Assert another environment variable was added
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          ANOTHER_VAL=$(jq -r '.containerDefinitions[] | select(.name=="web") | .environment[] | select(.name=="ANOTHER_VAR") | .value' "$OUTPUT_PATH")
+          echo "ANOTHER_VAR value: $ANOTHER_VAL"
+          if [ "$ANOTHER_VAL" != "another-value" ]; then
+            echo "FAIL: expected ANOTHER_VAR='another-value' but got '$ANOTHER_VAL'"
+            exit 1
+          fi
+          echo "PASS: ANOTHER_VAR correctly added"

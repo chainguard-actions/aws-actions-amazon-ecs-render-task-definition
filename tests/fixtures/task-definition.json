@@ -1,26 +1,31 @@
 {
-  "family": "my-task-family",
+  "family": "test-task",
   "containerDefinitions": [
     {
-      "name": "my-container",
+      "name": "web",
       "image": "nginx:latest",
+      "cpu": 256,
+      "memory": 512,
       "essential": true,
+      "environment": [
+        {
+          "name": "EXISTING_VAR",
+          "value": "existing-value"
+        }
+      ],
       "portMappings": [
         {
           "containerPort": 80,
           "protocol": "tcp"
         }
-      ],
-      "environment": [],
-      "secrets": [],
-      "logConfiguration": {
-        "logDriver": "awslogs",
-        "options": {
-          "awslogs-group": "/ecs/my-task",
-          "awslogs-region": "us-east-1",
-          "awslogs-stream-prefix": "ecs"
-        }
-      }
+      ]
+    },
+    {
+      "name": "sidecar",
+      "image": "busybox:latest",
+      "cpu": 64,
+      "memory": 128,
+      "essential": false
     }
   ],
   "requiresCompatibilities": ["FARGATE"],

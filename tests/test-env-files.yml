@@ -1,0 +1,79 @@
+name: Test rendering with env-files (S3 environment files)
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition.json
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
+          env-files: |
+            arn:aws:s3:::my-bucket/my-app.env
+            arn:aws:s3:::my-bucket/shared.env
+
+      - name: Assert task-definition output is set
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "output path: $OUTPUT_PATH"
+          if [ -z "$OUTPUT_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert environmentFiles array was created
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          COUNT=$(jq '.containerDefinitions[] | select(.name=="web") | .environmentFiles | length' "$OUTPUT_PATH")
+          echo "environmentFiles count: $COUNT"
+          if [ "$COUNT" != "2" ]; then
+            echo "FAIL: expected 2 environmentFiles but got $COUNT"
+            exit 1
+          fi
+          echo "PASS: correct number of environmentFiles"
+
+      - name: Assert first env-file value is correct
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          VAL=$(jq -r '.containerDefinitions[] | select(.name=="web") | .environmentFiles[0].value' "$OUTPUT_PATH")
+          echo "environmentFiles[0].value: $VAL"
+          EXPECTED="arn:aws:s3:::my-bucket/my-app.env"
+          if [ "$VAL" != "$EXPECTED" ]; then
+            echo "FAIL: expected '$EXPECTED' but got '$VAL'"
+            exit 1
+          fi
+          echo "PASS: first env-file value correct"
+
+      - name: Assert env-file type is s3
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          TYPE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .environmentFiles[0].type' "$OUTPUT_PATH")
+          echo "environmentFiles[0].type: $TYPE"
+          if [ "$TYPE" != "s3" ]; then
+            echo "FAIL: expected type 's3' but got '$TYPE'"
+            exit 1
+          fi
+          echo "PASS: env-file type is s3"
+
+      - name: Assert second env-file value is correct
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          VAL=$(jq -r '.containerDefinitions[] | select(.name=="web") | .environmentFiles[1].value' "$OUTPUT_PATH")
+          echo "environmentFiles[1].value: $VAL"
+          EXPECTED="arn:aws:s3:::my-bucket/shared.env"
+          if [ "$VAL" != "$EXPECTED" ]; then
+            echo "FAIL: expected '$EXPECTED' but got '$VAL'"
+            exit 1
+          fi
+          echo "PASS: second env-file value correct"

@@ -1,0 +1,67 @@
+name: Test rendering with log configuration
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition.json
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
+          log-configuration-log-driver: awslogs
+          log-configuration-options: |
+            awslogs-group=/ecs/my-app
+            awslogs-region=us-east-1
+            awslogs-stream-prefix=ecs
+
+      - name: Assert task-definition output is set
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "output path: $OUTPUT_PATH"
+          if [ -z "$OUTPUT_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert log driver is set
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          LOG_DRIVER=$(jq -r '.containerDefinitions[] | select(.name=="web") | .logConfiguration.logDriver' "$OUTPUT_PATH")
+          echo "logDriver: $LOG_DRIVER"
+          if [ "$LOG_DRIVER" != "awslogs" ]; then
+            echo "FAIL: expected logDriver='awslogs' but got '$LOG_DRIVER'"
+            exit 1
+          fi
+          echo "PASS: logDriver correctly set"
+
+      - name: Assert log group option is set
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          LOG_GROUP=$(jq -r '.containerDefinitions[] | select(.name=="web") | .logConfiguration.options["awslogs-group"]' "$OUTPUT_PATH")
+          echo "awslogs-group: $LOG_GROUP"
+          if [ "$LOG_GROUP" != "/ecs/my-app" ]; then
+            echo "FAIL: expected awslogs-group='/ecs/my-app' but got '$LOG_GROUP'"
+            exit 1
+          fi
+          echo "PASS: log configuration options correctly set"
+
+      - name: Assert log region option is set
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          LOG_REGION=$(jq -r '.containerDefinitions[] | select(.name=="web") | .logConfiguration.options["awslogs-region"]' "$OUTPUT_PATH")
+          echo "awslogs-region: $LOG_REGION"
+          if [ "$LOG_REGION" != "us-east-1" ]; then
+            echo "FAIL: expected awslogs-region='us-east-1' but got '$LOG_REGION'"
+            exit 1
+          fi
+          echo "PASS: awslogs-region correctly set"

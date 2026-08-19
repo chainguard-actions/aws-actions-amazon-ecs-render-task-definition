@@ -1,0 +1,53 @@
+name: Test rendering with docker labels
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition.json
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
+          docker-labels: |
+            version=1.0.0
+            environment=production
+
+      - name: Assert task-definition output is set
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "output path: $OUTPUT_PATH"
+          if [ -z "$OUTPUT_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert docker label version is set
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          VERSION=$(jq -r '.containerDefinitions[] | select(.name=="web") | .dockerLabels.version' "$OUTPUT_PATH")
+          echo "version label: $VERSION"
+          if [ "$VERSION" != "1.0.0" ]; then
+            echo "FAIL: expected version label '1.0.0' but got '$VERSION'"
+            exit 1
+          fi
+          echo "PASS: version docker label correctly set"
+
+      - name: Assert docker label environment is set
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          ENV_LABEL=$(jq -r '.containerDefinitions[] | select(.name=="web") | .dockerLabels.environment' "$OUTPUT_PATH")
+          echo "environment label: $ENV_LABEL"
+          if [ "$ENV_LABEL" != "production" ]; then
+            echo "FAIL: expected environment label 'production' but got '$ENV_LABEL'"
+            exit 1
+          fi
+          echo "PASS: environment docker label correctly set"

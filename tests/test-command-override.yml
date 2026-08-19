@@ -1,0 +1,52 @@
+name: Test rendering with command override
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition.json
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
+          command: /bin/sh -c echo hello
+
+      - name: Assert task-definition output is set
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "output path: $OUTPUT_PATH"
+          if [ -z "$OUTPUT_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert command is stored as array
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          CMD_TYPE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .command | type' "$OUTPUT_PATH")
+          echo "command type: $CMD_TYPE"
+          if [ "$CMD_TYPE" != "array" ]; then
+            echo "FAIL: expected command to be an array but got '$CMD_TYPE'"
+            exit 1
+          fi
+          echo "PASS: command is stored as array"
+
+      - name: Assert command is set in rendered file
+        env:
+          OUTPUT_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          CMD=$(jq -r '.containerDefinitions[] | select(.name=="web") | .command | join(" ")' "$OUTPUT_PATH")
+          EXPECTED="/bin/sh -c echo hello"
+          echo "command: $CMD"
+          if [ "$CMD" != "$EXPECTED" ]; then
+            echo "FAIL: expected command '$EXPECTED' but got '$CMD'"
+            exit 1
+          fi
+          echo "PASS: command correctly set"
