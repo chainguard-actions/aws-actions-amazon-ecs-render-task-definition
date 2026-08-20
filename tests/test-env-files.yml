@@ -1,0 +1,84 @@
+name: Test env-files input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition-basic.json
+          container-name: web
+          image: nginx:1.25.0
+          env-files: |
+            arn:aws:s3:::my-bucket/my-env-file.env
+            arn:aws:s3:::my-bucket/my-other-env-file.env
+
+      - name: Assert output path is set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ -z "$TASK_DEF_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS: task-definition output is set"
+
+      - name: Assert output file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Checking file: $TASK_DEF_PATH"
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file does not exist at $TASK_DEF_PATH"
+            exit 1
+          fi
+          echo "PASS: rendered task definition file exists"
+
+      - name: Assert env-files were set on container
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Contents of rendered task definition:"
+          cat "$TASK_DEF_PATH"
+          ENV_FILES_COUNT=$(jq '.containerDefinitions[] | select(.name=="web") | .environmentFiles | length' "$TASK_DEF_PATH")
+          echo "environmentFiles count: $ENV_FILES_COUNT"
+          if [ "$ENV_FILES_COUNT" != "2" ]; then
+            echo "FAIL: expected 2 environmentFiles entries, got '$ENV_FILES_COUNT'"
+            exit 1
+          fi
+          FIRST_ARN=$(jq -r '.containerDefinitions[] | select(.name=="web") | .environmentFiles[0].value' "$TASK_DEF_PATH")
+          echo "first arn: $FIRST_ARN"
+          if [ "$FIRST_ARN" != "arn:aws:s3:::my-bucket/my-env-file.env" ]; then
+            echo "FAIL: expected first env-file ARN 'arn:aws:s3:::my-bucket/my-env-file.env', got '$FIRST_ARN'"
+            exit 1
+          fi
+          FIRST_TYPE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .environmentFiles[0].type' "$TASK_DEF_PATH")
+          echo "first type: $FIRST_TYPE"
+          if [ "$FIRST_TYPE" != "s3" ]; then
+            echo "FAIL: expected type 's3', got '$FIRST_TYPE'"
+            exit 1
+          fi
+          SECOND_ARN=$(jq -r '.containerDefinitions[] | select(.name=="web") | .environmentFiles[1].value' "$TASK_DEF_PATH")
+          echo "second arn: $SECOND_ARN"
+          if [ "$SECOND_ARN" != "arn:aws:s3:::my-bucket/my-other-env-file.env" ]; then
+            echo "FAIL: expected second env-file ARN 'arn:aws:s3:::my-bucket/my-other-env-file.env', got '$SECOND_ARN'"
+            exit 1
+          fi
+          echo "PASS: env-files were correctly set on container"
+
+      - name: Assert image was updated
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          IMAGE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .image' "$TASK_DEF_PATH")
+          echo "image: $IMAGE"
+          if [ "$IMAGE" != "nginx:1.25.0" ]; then
+            echo "FAIL: expected image 'nginx:1.25.0', got '$IMAGE'"
+            exit 1
+          fi
+          echo "PASS: image was correctly updated"

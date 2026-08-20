@@ -1,0 +1,20 @@
+{
+  "family": "test-logs-task",
+  "containerDefinitions": [
+    {
+      "name": "app",
+      "image": "old-app-image:latest",
+      "cpu": 256,
+      "memory": 512,
+      "essential": true,
+      "logConfiguration": {
+        "logDriver": "json-file",
+        "options": {}
+      }
+    }
+  ],
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "256",
+  "memory": "512"
+}

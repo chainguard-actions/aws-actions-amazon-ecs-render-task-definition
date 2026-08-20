@@ -1,4 +1,4 @@
-name: Test basic usage - task-definition file with image
+name: Test basic image update
 on:
   workflow_dispatch:
 jobs:
@@ -6,23 +6,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
       - id: render
         uses: .
         with:
-          task-definition: actions/hardened/aws-actions--amazon-ecs-render-task-definition/v1.8.4/tests/fixtures/task-definition.json
-          container-name: my-container
-          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
-      - name: Assert task-definition output is set
+          task-definition: tests/fixtures/task-definition-basic.json
+          container-name: web
+          image: nginx:1.25.0
+
+      - name: Assert output path is set
         env:
-          ACTUAL: ${{ steps.render.outputs.task-definition }}
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
-          echo "actual: $ACTUAL"
-          if [ -z "$ACTUAL" ]; then
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ -z "$TASK_DEF_PATH" ]; then
             echo "FAIL: task-definition output is empty"
             exit 1
           fi
-          echo "PASS: task-definition output is set to $ACTUAL"
-      - name: Assert rendered file exists
+          echo "PASS: task-definition output is set"
+
+      - name: Assert output file exists
         env:
           TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
@@ -31,16 +34,45 @@ jobs:
             echo "FAIL: rendered task definition file does not exist at $TASK_DEF_PATH"
             exit 1
           fi
-          echo "PASS: file exists"
-      - name: Assert image was updated in rendered file
+          echo "PASS: rendered task definition file exists"
+
+      - name: Assert image was updated
         env:
           TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
         run: |
-          echo "Checking image in rendered file..."
-          IMAGE=$(cat "$TASK_DEF_PATH" | python3 -c "import json,sys; td=json.load(sys.stdin); print(td['containerDefinitions'][0]['image'])")
-          echo "actual image: $IMAGE"
-          if [ "$IMAGE" != "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest" ]; then
-            echo "FAIL: expected image to be updated"
+          echo "Contents of rendered task definition:"
+          cat "$TASK_DEF_PATH"
+          IMAGE=$(jq -r '.containerDefinitions[] | select(.name=="web") | .image' "$TASK_DEF_PATH")
+          echo "image: $IMAGE"
+          if [ "$IMAGE" != "nginx:1.25.0" ]; then
+            echo "FAIL: expected image 'nginx:1.25.0', got '$IMAGE'"
             exit 1
           fi
-          echo "PASS: image was updated correctly"
+          echo "PASS: image was correctly updated"
+
+      - name: Assert family is preserved
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          FAMILY=$(jq -r '.family' "$TASK_DEF_PATH")
+          echo "family: $FAMILY"
+          if [ "$FAMILY" != "test-task" ]; then
+            echo "FAIL: expected family 'test-task', got '$FAMILY'"
+            exit 1
+          fi
+          echo "PASS: family is preserved"
+
+      - name: Assert ignored attributes are removed
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          # These attributes should be stripped from the output
+          for attr in taskDefinitionArn revision status compatibilities requiresAttributes registeredAt deregisteredAt registeredBy; do
+            VALUE=$(jq -r ".$attr // \"null\"" "$TASK_DEF_PATH")
+            echo "$attr: $VALUE"
+            if [ "$VALUE" != "null" ]; then
+              echo "FAIL: attribute '$attr' should have been removed but got '$VALUE'"
+              exit 1
+            fi
+          done
+          echo "PASS: ignored attributes are removed"

@@ -1,0 +1,61 @@
+name: Test docker labels and command
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition-basic.json
+          container-name: web
+          image: nginx:1.25.0
+          docker-labels: |
+            version=1.0.0
+            environment=production
+          command: nginx -g daemon off;
+
+      - name: Assert output file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file does not exist"
+            exit 1
+          fi
+          echo "PASS: rendered task definition file exists"
+
+      - name: Assert docker labels were set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Contents of rendered task definition:"
+          cat "$TASK_DEF_PATH"
+          VERSION_LABEL=$(jq -r '.containerDefinitions[] | select(.name=="web") | .dockerLabels.version' "$TASK_DEF_PATH")
+          echo "version label: $VERSION_LABEL"
+          if [ "$VERSION_LABEL" != "1.0.0" ]; then
+            echo "FAIL: expected version label '1.0.0', got '$VERSION_LABEL'"
+            exit 1
+          fi
+          ENV_LABEL=$(jq -r '.containerDefinitions[] | select(.name=="web") | .dockerLabels.environment' "$TASK_DEF_PATH")
+          echo "environment label: $ENV_LABEL"
+          if [ "$ENV_LABEL" != "production" ]; then
+            echo "FAIL: expected environment label 'production', got '$ENV_LABEL'"
+            exit 1
+          fi
+          echo "PASS: docker labels were set correctly"
+
+      - name: Assert command was set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          COMMAND=$(jq -r '.containerDefinitions[] | select(.name=="web") | .command | join(" ")' "$TASK_DEF_PATH")
+          echo "command: $COMMAND"
+          if [ "$COMMAND" != "nginx -g daemon off;" ]; then
+            echo "FAIL: expected command 'nginx -g daemon off;', got '$COMMAND'"
+            exit 1
+          fi
+          echo "PASS: command was set correctly"

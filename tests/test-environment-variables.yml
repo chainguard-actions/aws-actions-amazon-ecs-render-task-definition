@@ -1,0 +1,79 @@
+name: Test environment variables
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition-basic.json
+          container-name: web
+          image: nginx:1.25.0
+          environment-variables: |
+            NEW_VAR=new-value
+            ANOTHER_VAR=another-value
+            EXISTING_VAR=overridden-value
+
+      - name: Assert output file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file does not exist"
+            exit 1
+          fi
+          echo "PASS: rendered task definition file exists"
+
+      - name: Assert new environment variable was added
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Contents of rendered task definition:"
+          cat "$TASK_DEF_PATH"
+          NEW_VAR=$(jq -r '.containerDefinitions[] | select(.name=="web") | .environment[] | select(.name=="NEW_VAR") | .value' "$TASK_DEF_PATH")
+          echo "NEW_VAR: $NEW_VAR"
+          if [ "$NEW_VAR" != "new-value" ]; then
+            echo "FAIL: expected NEW_VAR='new-value', got '$NEW_VAR'"
+            exit 1
+          fi
+          echo "PASS: NEW_VAR was added correctly"
+
+      - name: Assert second new environment variable was added
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          ANOTHER_VAR=$(jq -r '.containerDefinitions[] | select(.name=="web") | .environment[] | select(.name=="ANOTHER_VAR") | .value' "$TASK_DEF_PATH")
+          echo "ANOTHER_VAR: $ANOTHER_VAR"
+          if [ "$ANOTHER_VAR" != "another-value" ]; then
+            echo "FAIL: expected ANOTHER_VAR='another-value', got '$ANOTHER_VAR'"
+            exit 1
+          fi
+          echo "PASS: ANOTHER_VAR was added correctly"
+
+      - name: Assert existing environment variable was overridden
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          EXISTING_VAR=$(jq -r '.containerDefinitions[] | select(.name=="web") | .environment[] | select(.name=="EXISTING_VAR") | .value' "$TASK_DEF_PATH")
+          echo "EXISTING_VAR: $EXISTING_VAR"
+          if [ "$EXISTING_VAR" != "overridden-value" ]; then
+            echo "FAIL: expected EXISTING_VAR='overridden-value', got '$EXISTING_VAR'"
+            exit 1
+          fi
+          echo "PASS: EXISTING_VAR was overridden correctly"
+
+      - name: Assert no duplicate environment variables
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          COUNT=$(jq '[.containerDefinitions[] | select(.name=="web") | .environment[] | select(.name=="EXISTING_VAR")] | length' "$TASK_DEF_PATH")
+          echo "Count of EXISTING_VAR entries: $COUNT"
+          if [ "$COUNT" != "1" ]; then
+            echo "FAIL: expected exactly 1 EXISTING_VAR entry, got $COUNT"
+            exit 1
+          fi
+          echo "PASS: no duplicate environment variables"
