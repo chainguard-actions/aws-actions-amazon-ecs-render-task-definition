@@ -1,0 +1,32 @@
+{
+  "family": "my-multi-task",
+  "containerDefinitions": [
+    {
+      "name": "web",
+      "image": "nginx:latest",
+      "cpu": 128,
+      "memory": 256,
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "hostPort": 80,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": []
+    },
+    {
+      "name": "sidecar",
+      "image": "busybox:latest",
+      "cpu": 64,
+      "memory": 128,
+      "essential": false,
+      "environment": []
+    }
+  ],
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "256",
+  "memory": "512"
+}

@@ -1,0 +1,81 @@
+name: Test environment variables injection
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition.json
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v2.0.0
+          environment-variables: |
+            APP_ENV=production
+            LOG_LEVEL=info
+            DB_HOST=mydb.example.com
+
+      - name: Assert output path is set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ -z "$TASK_DEF_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert environment variables are present in rendered file
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Contents of rendered task definition:"
+          cat "$TASK_DEF_PATH"
+
+          # Check APP_ENV=production
+          APP_ENV=$(python3 -c "
+          import json
+          data = json.load(open('$TASK_DEF_PATH'))
+          container = [c for c in data['containerDefinitions'] if c['name'] == 'web'][0]
+          env_map = {e['name']: e['value'] for e in container.get('environment', [])}
+          print(env_map.get('APP_ENV', ''))
+          ")
+          echo "APP_ENV: $APP_ENV"
+          if [ "$APP_ENV" != "production" ]; then
+            echo "FAIL: expected APP_ENV=production but got '$APP_ENV'"
+            exit 1
+          fi
+
+          # Check LOG_LEVEL=info
+          LOG_LEVEL=$(python3 -c "
+          import json
+          data = json.load(open('$TASK_DEF_PATH'))
+          container = [c for c in data['containerDefinitions'] if c['name'] == 'web'][0]
+          env_map = {e['name']: e['value'] for e in container.get('environment', [])}
+          print(env_map.get('LOG_LEVEL', ''))
+          ")
+          echo "LOG_LEVEL: $LOG_LEVEL"
+          if [ "$LOG_LEVEL" != "info" ]; then
+            echo "FAIL: expected LOG_LEVEL=info but got '$LOG_LEVEL'"
+            exit 1
+          fi
+
+          # Check DB_HOST
+          DB_HOST=$(python3 -c "
+          import json
+          data = json.load(open('$TASK_DEF_PATH'))
+          container = [c for c in data['containerDefinitions'] if c['name'] == 'web'][0]
+          env_map = {e['name']: e['value'] for e in container.get('environment', [])}
+          print(env_map.get('DB_HOST', ''))
+          ")
+          echo "DB_HOST: $DB_HOST"
+          if [ "$DB_HOST" != "mydb.example.com" ]; then
+            echo "FAIL: expected DB_HOST=mydb.example.com but got '$DB_HOST'"
+            exit 1
+          fi
+
+          echo "PASS: all environment variables correctly injected"

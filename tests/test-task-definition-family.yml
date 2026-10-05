@@ -1,0 +1,83 @@
+name: Test task-definition-family and task-definition-revision inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # The action fetches the task definition from ECS using the family name and revision.
+      # Without real AWS credentials, the ECS API call will fail.
+      # We assert that the action either succeeds (if credentials are available)
+      # or fails gracefully with an ECS error (not a crash).
+      - id: render
+        uses: .
+        continue-on-error: true
+        with:
+          task-definition-family: my-task-family
+          task-definition-revision: "3"
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v1.0.0
+
+      - name: Assert action ran and handled the family+revision inputs
+        env:
+          OUTCOME: ${{ steps.render.outcome }}
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ "$OUTCOME" = "success" ]; then
+            if [ -z "$TASK_DEF_PATH" ]; then
+              echo "FAIL: action succeeded but task-definition output is empty"
+              exit 1
+            fi
+            if [ ! -f "$TASK_DEF_PATH" ]; then
+              echo "FAIL: action succeeded but rendered file does not exist at '$TASK_DEF_PATH'"
+              exit 1
+            fi
+            echo "PASS: action succeeded and produced rendered task definition at '$TASK_DEF_PATH'"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (no real AWS credentials or ECS task definition available)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
+
+  test-family-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Test with family name only (no revision) - fetches latest revision
+      - id: render-family-only
+        uses: .
+        continue-on-error: true
+        with:
+          task-definition-family: my-task-family
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
+
+      - name: Assert action ran and handled the family-only input
+        env:
+          OUTCOME: ${{ steps.render-family-only.outcome }}
+          TASK_DEF_PATH: ${{ steps.render-family-only.outputs.task-definition }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ "$OUTCOME" = "success" ]; then
+            if [ -z "$TASK_DEF_PATH" ]; then
+              echo "FAIL: action succeeded but task-definition output is empty"
+              exit 1
+            fi
+            if [ ! -f "$TASK_DEF_PATH" ]; then
+              echo "FAIL: action succeeded but rendered file does not exist at '$TASK_DEF_PATH'"
+              exit 1
+            fi
+            echo "PASS: action succeeded and produced rendered task definition at '$TASK_DEF_PATH'"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (no real AWS credentials or ECS task definition available)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

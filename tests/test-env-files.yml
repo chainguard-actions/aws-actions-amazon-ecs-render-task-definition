@@ -1,0 +1,100 @@
+name: Test env-files input - render task definition with S3 env files
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition.json
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v2.0.0
+          env-files: |
+            arn:aws:s3:::my-bucket/my-env-file.env
+            arn:aws:s3:::my-bucket/my-other-env-file.env
+
+      - name: Assert output path is set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ -z "$TASK_DEF_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS: task-definition output is set to '$TASK_DEF_PATH'"
+
+      - name: Assert rendered file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Checking file: $TASK_DEF_PATH"
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file does not exist at '$TASK_DEF_PATH'"
+            exit 1
+          fi
+          echo "PASS: rendered file exists"
+
+      - name: Assert image was updated in rendered file
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Contents of rendered task definition:"
+          cat "$TASK_DEF_PATH"
+          IMAGE=$(python3 -c "import sys, json; defs=json.load(open('$TASK_DEF_PATH'))['containerDefinitions']; print([c['image'] for c in defs if c['name']=='web'][0])")
+          echo "image in rendered file: $IMAGE"
+          EXPECTED="123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v2.0.0"
+          if [ "$IMAGE" != "$EXPECTED" ]; then
+            echo "FAIL: expected image '$EXPECTED' but got '$IMAGE'"
+            exit 1
+          fi
+          echo "PASS: image correctly updated"
+
+      - name: Assert environmentFiles were set in rendered file
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Contents of rendered task definition:"
+          cat "$TASK_DEF_PATH"
+          ENV_FILES=$(python3 -c "
+          import json
+          with open('$TASK_DEF_PATH') as f:
+              td = json.load(f)
+          container = next(c for c in td['containerDefinitions'] if c['name'] == 'web')
+          env_files = container.get('environmentFiles', [])
+          print(json.dumps(env_files))
+          ")
+          echo "environmentFiles: $ENV_FILES"
+          # Check that two env files were added
+          COUNT=$(python3 -c "import json, sys; print(len(json.loads('$ENV_FILES')))")
+          echo "environmentFiles count: $COUNT"
+          if [ "$COUNT" != "2" ]; then
+            echo "FAIL: expected 2 environmentFiles but got $COUNT"
+            exit 1
+          fi
+          # Check first env file value
+          FIRST=$(python3 -c "import json, sys; files=json.loads('$ENV_FILES'); print(files[0]['value'])")
+          echo "first env file: $FIRST"
+          if [ "$FIRST" != "arn:aws:s3:::my-bucket/my-env-file.env" ]; then
+            echo "FAIL: expected first env file to be 'arn:aws:s3:::my-bucket/my-env-file.env' but got '$FIRST'"
+            exit 1
+          fi
+          # Check second env file value
+          SECOND=$(python3 -c "import json, sys; files=json.loads('$ENV_FILES'); print(files[1]['value'])")
+          echo "second env file: $SECOND"
+          if [ "$SECOND" != "arn:aws:s3:::my-bucket/my-other-env-file.env" ]; then
+            echo "FAIL: expected second env file to be 'arn:aws:s3:::my-bucket/my-other-env-file.env' but got '$SECOND'"
+            exit 1
+          fi
+          # Check type is s3
+          TYPE=$(python3 -c "import json, sys; files=json.loads('$ENV_FILES'); print(files[0]['type'])")
+          echo "env file type: $TYPE"
+          if [ "$TYPE" != "s3" ]; then
+            echo "FAIL: expected env file type 's3' but got '$TYPE'"
+            exit 1
+          fi
+          echo "PASS: environmentFiles correctly set"

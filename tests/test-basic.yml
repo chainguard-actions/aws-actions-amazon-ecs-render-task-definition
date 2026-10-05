@@ -1,0 +1,62 @@
+name: Test basic usage - render task definition with new image
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition.json
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v1.0.0
+
+      - name: Assert output path is set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ -z "$TASK_DEF_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS: task-definition output is set to '$TASK_DEF_PATH'"
+
+      - name: Assert rendered file exists
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Checking file: $TASK_DEF_PATH"
+          if [ ! -f "$TASK_DEF_PATH" ]; then
+            echo "FAIL: rendered task definition file does not exist at '$TASK_DEF_PATH'"
+            exit 1
+          fi
+          echo "PASS: rendered file exists"
+
+      - name: Assert image was updated in rendered file
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Contents of rendered task definition:"
+          cat "$TASK_DEF_PATH"
+          IMAGE=$(python3 -c "import sys, json; defs=json.load(open('$TASK_DEF_PATH'))['containerDefinitions']; print([c['image'] for c in defs if c['name']=='web'][0])")
+          echo "image in rendered file: $IMAGE"
+          EXPECTED="123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v1.0.0"
+          if [ "$IMAGE" != "$EXPECTED" ]; then
+            echo "FAIL: expected image '$EXPECTED' but got '$IMAGE'"
+            exit 1
+          fi
+          echo "PASS: image correctly updated"
+
+      - name: Assert original task definition is unchanged
+        run: |
+          ORIGINAL_IMAGE=$(python3 -c "import sys, json; defs=json.load(open('tests/fixtures/task-definition.json'))['containerDefinitions']; print([c['image'] for c in defs if c['name']=='web'][0])")
+          echo "original image: $ORIGINAL_IMAGE"
+          if [ "$ORIGINAL_IMAGE" != "nginx:latest" ]; then
+            echo "FAIL: original task definition was modified (expected 'nginx:latest', got '$ORIGINAL_IMAGE')"
+            exit 1
+          fi
+          echo "PASS: original task definition is unchanged"

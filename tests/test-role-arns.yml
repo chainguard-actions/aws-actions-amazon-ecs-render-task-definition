@@ -1,0 +1,65 @@
+name: Test task role ARN and execution role ARN overrides
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition.json
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v6.0.0
+          task-role-arn: arn:aws:iam::123456789012:role/MyTaskRole
+          execution-role-arn: arn:aws:iam::123456789012:role/MyExecutionRole
+
+      - name: Assert output path is set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ -z "$TASK_DEF_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert task role ARN is set in rendered file
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Contents of rendered task definition:"
+          cat "$TASK_DEF_PATH"
+
+          TASK_ROLE=$(python3 -c "
+          import json
+          data = json.load(open('$TASK_DEF_PATH'))
+          print(data.get('taskRoleArn', ''))
+          ")
+          echo "taskRoleArn: $TASK_ROLE"
+          EXPECTED="arn:aws:iam::123456789012:role/MyTaskRole"
+          if [ "$TASK_ROLE" != "$EXPECTED" ]; then
+            echo "FAIL: expected taskRoleArn '$EXPECTED' but got '$TASK_ROLE'"
+            exit 1
+          fi
+          echo "PASS: taskRoleArn correctly set"
+
+      - name: Assert execution role ARN is set in rendered file
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          EXEC_ROLE=$(python3 -c "
+          import json
+          data = json.load(open('$TASK_DEF_PATH'))
+          print(data.get('executionRoleArn', ''))
+          ")
+          echo "executionRoleArn: $EXEC_ROLE"
+          EXPECTED="arn:aws:iam::123456789012:role/MyExecutionRole"
+          if [ "$EXEC_ROLE" != "$EXPECTED" ]; then
+            echo "FAIL: expected executionRoleArn '$EXPECTED' but got '$EXEC_ROLE'"
+            exit 1
+          fi
+          echo "PASS: executionRoleArn correctly set"

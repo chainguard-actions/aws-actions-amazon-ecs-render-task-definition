@@ -1,0 +1,60 @@
+name: Test multiple containers update
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition-multi.json
+          container-name: web,sidecar
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/shared-app:v3.0.0
+
+      - name: Assert output path is set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ -z "$TASK_DEF_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert both container images were updated
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Contents of rendered task definition:"
+          cat "$TASK_DEF_PATH"
+
+          WEB_IMAGE=$(python3 -c "
+          import json
+          data = json.load(open('$TASK_DEF_PATH'))
+          containers = {c['name']: c['image'] for c in data['containerDefinitions']}
+          print(containers.get('web', ''))
+          ")
+          echo "web image: $WEB_IMAGE"
+          EXPECTED="123456789012.dkr.ecr.us-east-1.amazonaws.com/shared-app:v3.0.0"
+          if [ "$WEB_IMAGE" != "$EXPECTED" ]; then
+            echo "FAIL: expected web image '$EXPECTED' but got '$WEB_IMAGE'"
+            exit 1
+          fi
+
+          SIDECAR_IMAGE=$(python3 -c "
+          import json
+          data = json.load(open('$TASK_DEF_PATH'))
+          containers = {c['name']: c['image'] for c in data['containerDefinitions']}
+          print(containers.get('sidecar', ''))
+          ")
+          echo "sidecar image: $SIDECAR_IMAGE"
+          if [ "$SIDECAR_IMAGE" != "$EXPECTED" ]; then
+            echo "FAIL: expected sidecar image '$EXPECTED' but got '$SIDECAR_IMAGE'"
+            exit 1
+          fi
+
+          echo "PASS: both container images correctly updated to '$EXPECTED'"

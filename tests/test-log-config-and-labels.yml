@@ -1,0 +1,100 @@
+name: Test log configuration and docker labels
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: render
+        uses: .
+        with:
+          task-definition: tests/fixtures/task-definition.json
+          container-name: web
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:v4.0.0
+          log-configuration-log-driver: awslogs
+          log-configuration-options: |
+            awslogs-group=/ecs/my-new-task
+            awslogs-region=us-west-2
+            awslogs-stream-prefix=ecs
+          docker-labels: |
+            version=4.0.0
+            environment=staging
+
+      - name: Assert output path is set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "task-definition output: $TASK_DEF_PATH"
+          if [ -z "$TASK_DEF_PATH" ]; then
+            echo "FAIL: task-definition output is empty"
+            exit 1
+          fi
+          echo "PASS"
+
+      - name: Assert log configuration is updated
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          echo "Contents of rendered task definition:"
+          cat "$TASK_DEF_PATH"
+
+          LOG_DRIVER=$(python3 -c "
+          import json
+          data = json.load(open('$TASK_DEF_PATH'))
+          container = [c for c in data['containerDefinitions'] if c['name'] == 'web'][0]
+          print(container.get('logConfiguration', {}).get('logDriver', ''))
+          ")
+          echo "logDriver: $LOG_DRIVER"
+          if [ "$LOG_DRIVER" != "awslogs" ]; then
+            echo "FAIL: expected logDriver 'awslogs' but got '$LOG_DRIVER'"
+            exit 1
+          fi
+
+          LOG_GROUP=$(python3 -c "
+          import json
+          data = json.load(open('$TASK_DEF_PATH'))
+          container = [c for c in data['containerDefinitions'] if c['name'] == 'web'][0]
+          opts = container.get('logConfiguration', {}).get('options', {})
+          print(opts.get('awslogs-group', ''))
+          ")
+          echo "awslogs-group: $LOG_GROUP"
+          if [ "$LOG_GROUP" != "/ecs/my-new-task" ]; then
+            echo "FAIL: expected awslogs-group '/ecs/my-new-task' but got '$LOG_GROUP'"
+            exit 1
+          fi
+
+          echo "PASS: log configuration correctly updated"
+
+      - name: Assert docker labels are set
+        env:
+          TASK_DEF_PATH: ${{ steps.render.outputs.task-definition }}
+        run: |
+          VERSION_LABEL=$(python3 -c "
+          import json
+          data = json.load(open('$TASK_DEF_PATH'))
+          container = [c for c in data['containerDefinitions'] if c['name'] == 'web'][0]
+          labels = container.get('dockerLabels', {})
+          print(labels.get('version', ''))
+          ")
+          echo "version label: $VERSION_LABEL"
+          if [ "$VERSION_LABEL" != "4.0.0" ]; then
+            echo "FAIL: expected version label '4.0.0' but got '$VERSION_LABEL'"
+            exit 1
+          fi
+
+          ENV_LABEL=$(python3 -c "
+          import json
+          data = json.load(open('$TASK_DEF_PATH'))
+          container = [c for c in data['containerDefinitions'] if c['name'] == 'web'][0]
+          labels = container.get('dockerLabels', {})
+          print(labels.get('environment', ''))
+          ")
+          echo "environment label: $ENV_LABEL"
+          if [ "$ENV_LABEL" != "staging" ]; then
+            echo "FAIL: expected environment label 'staging' but got '$ENV_LABEL'"
+            exit 1
+          fi
+
+          echo "PASS: docker labels correctly set"
