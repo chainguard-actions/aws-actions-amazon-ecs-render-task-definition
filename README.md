@@ -12,6 +12,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 | v1.8.4 | [`v1.8.4`](https://github.com/chainguard-actions/aws-actions-amazon-ecs-render-task-definition/tree/v1.8.4) | [`77954e2`](https://github.com/aws-actions/amazon-ecs-render-task-definition/commit/77954e213ba1f9f9cb016b86a1d4f6fcdea0d57e) |
 | v1.8.5 | [`v1.8.5`](https://github.com/chainguard-actions/aws-actions-amazon-ecs-render-task-definition/tree/v1.8.5) | [`6853cfa`](https://github.com/aws-actions/amazon-ecs-render-task-definition/commit/6853cfae8c3a7d978fbf68b5a55453395541dfbb) |
 | v1.9.0 | [`v1.9.0`](https://github.com/chainguard-actions/aws-actions-amazon-ecs-render-task-definition/tree/v1.9.0) | [`138c24f`](https://github.com/aws-actions/amazon-ecs-render-task-definition/commit/138c24f321fdbdf7edee4a685519d253cae2cdea) |
+| v1.9.1 | [`v1.9.1`](https://github.com/chainguard-actions/aws-actions-amazon-ecs-render-task-definition/tree/v1.9.1) | [`8d79160`](https://github.com/aws-actions/amazon-ecs-render-task-definition/commit/8d79160660ad39c402a16e5fc7cd2a32e8f7d6b7) |
 
 ## Privacy
 
